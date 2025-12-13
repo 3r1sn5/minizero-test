@@ -7,6 +7,11 @@
 typedef minizero::env::amazons::AmazonsAction Action;
 typedef minizero::env::amazons::AmazonsEnv Environment;
 typedef minizero::env::amazons::AmazonsEnvLoader EnvironmentLoader;
+#elif ADDIKUL
+#include "addikul.h"
+typedef minizero::env::addikul::AddiKulAction Action;
+typedef minizero::env::addikul::AddiKulEnv Environment;
+typedef minizero::env::addikul::AddiKulEnvLoader EnvironmentLoader;
 #elif ATARI
 #include "atari.h"
 typedef minizero::env::atari::AtariAction Action;
@@ -133,6 +138,8 @@ inline void setUpEnv()
 
 #if AMAZONS
     config::env_board_size = 10;
+#elif ADDIKUL
+    config::env_board_size = 7;
 #elif ATARI
     config::learner_n_step_return = 10;
     config::zero_actor_intermediate_sequence_length = 200;
