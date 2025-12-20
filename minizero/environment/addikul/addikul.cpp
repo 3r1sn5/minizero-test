@@ -4,9 +4,48 @@
 #include <cmath>
 #include <cctype>
 #include <sstream>
+#include <limits>
 #include <utility>
 
 namespace minizero::env::addikul {
+
+// --- Coordinate helpers ---
+// Use a1 = (x=0,y=0) and y increases with the digit (same convention as Breakthrough/GTP).
+static inline int coordToPos(const std::string& s, int board_size)
+{
+    if (s.size() < 2) { return -1; }
+    char file = static_cast<char>(std::tolower(static_cast<unsigned char>(s[0])));
+    if (file < 'a' || file >= static_cast<char>('a' + board_size)) { return -1; }
+    int x = file - 'a';
+
+    int y = 0;
+    for (size_t i = 1; i < s.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(s[i]))) { return -1; }
+        y = y * 10 + (s[i] - '0');
+    }
+    y -= 1;
+    if (y < 0 || y >= board_size) { return -1; }
+    return y * board_size + x;
+}
+
+static inline std::string posToCoord(int pos, int board_size)
+{
+    int x = pos % board_size;
+    int y = pos / board_size;
+    std::string out;
+    out.push_back(static_cast<char>('a' + x));
+    out += std::to_string(y + 1);
+    return out;
+}
+
+
+namespace {
+inline std::string toLowerCopy(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return s;
+}
+}  // namespace
 
 using namespace minizero::utils;
 
@@ -19,10 +58,36 @@ AddiKulAction::AddiKulAction(const std::vector<std::string>& action_string_args,
     // encode it as unrecognized characters (e.g., "1"/"2"). Default to the current turn in both
     // cases instead of treating the move as illegal.
     int move_start = 0;
-    if (action_string_args[0].size() == 1) {
-        player_ = charToPlayer(action_string_args[0][0]);
-        if (player_ != Player::kPlayerSize) { move_start = 1; }
+
+    // Some frontends/wrappers include the command token itself (e.g., "play black a3a4"),
+    // and some may prefix an integer move id. Skip those tokens first.
+    auto isNumber = [](const std::string& s) {
+        return !s.empty() && std::all_of(s.begin(), s.end(),
+                                         [](unsigned char c) { return std::isdigit(c); });
+    };
+    while (move_start < static_cast<int>(action_string_args.size())) {
+        const std::string t = toLowerCopy(action_string_args[move_start]);
+        if (t == "play" || t == "move" || t == "turn") { ++move_start; continue; }
+        if (isNumber(t)) { ++move_start; continue; }
+        break;
     }
+
+    // Optional leading player token:
+    const std::string token0 = (move_start < static_cast<int>(action_string_args.size()))
+                                 ? toLowerCopy(action_string_args[move_start])
+                                 : std::string();
+    if (token0 == "b" || token0 == "black") {
+        player_ = Player::kPlayer1;
+        ++move_start;
+    } else if (token0 == "w" || token0 == "white") {
+        player_ = Player::kPlayer2;
+        ++move_start;
+    } else if (move_start < static_cast<int>(action_string_args.size()) &&
+               action_string_args[move_start].size() == 1) {
+        player_ = charToPlayer(action_string_args[move_start][0]);
+        if (player_ != Player::kPlayerSize) { ++move_start; }
+    }
+
     if (player_ == Player::kPlayerSize) { player_ = Player::kPlayerNone; }
 
     std::vector<std::string> move_tokens;
@@ -30,8 +95,7 @@ AddiKulAction::AddiKulAction(const std::vector<std::string>& action_string_args,
     int remaining = static_cast<int>(action_string_args.size()) - move_start;
     if (remaining >= 2) {
         move_tokens.assign(action_string_args.begin() + move_start, action_string_args.begin() + move_start + 2);
-    } 
-    else {
+    }else {
         // Accept compact strings like "E3F4" or "E3-F4" that arrive as a single token in GTP.
         std::string packed = action_string_args.back();
         std::string token;
@@ -39,15 +103,15 @@ AddiKulAction::AddiKulAction(const std::vector<std::string>& action_string_args,
             if (std::isalpha(ch) || std::isdigit(ch)) {
                 token.push_back(ch);
                 if (std::isdigit(ch)) {
-                    move_tokens.push_back(token);
+                    move_tokens.push_back(toLowerCopy(token));
                     token.clear();
                 }
             } else if (!token.empty()) {
-                move_tokens.push_back(token);
+                move_tokens.push_back(toLowerCopy(token));
                 token.clear();
             }
         }
-        if (!token.empty()) { move_tokens.push_back(token); }
+        if (!token.empty()) { move_tokens.push_back(toLowerCopy(token)); }
     }
 
     if (move_tokens.size() < 2) {
@@ -56,17 +120,17 @@ AddiKulAction::AddiKulAction(const std::vector<std::string>& action_string_args,
     }
 
     assert(move_tokens.size() == 2);
-    int from = SGFLoader::boardCoordinateStringToActionID(move_tokens[0], board_size);
-    int dest = SGFLoader::boardCoordinateStringToActionID(move_tokens[1], board_size);
+    int from = coordToPos(move_tokens[0], board_size);
+    int dest = coordToPos(move_tokens[1], board_size);
     action_id_ = encode(from, dest, board_size);
 }
 
 std::string AddiKulAction::toConsoleString() const
 {
-    if (action_id_ < 0 || player_ == Player::kPlayerNone) { return "pass"; }
+    if (action_id_ < 0) { return "pass"; }
     int board_size = kAddiKulBoardSize;
-    std::string from = SGFLoader::actionIDToBoardCoordinateString(getFromID(board_size), board_size);
-    std::string dest = SGFLoader::actionIDToBoardCoordinateString(getDestID(board_size), board_size);
+    std::string from = posToCoord(getFromID(board_size), board_size);
+    std::string dest = posToCoord(getDestID(board_size), board_size);
     std::string act = from + dest;
     std::transform(act.begin(), act.end(), act.begin(), [](unsigned char c) {return std::tolower(c); });
     return act;
@@ -187,8 +251,22 @@ bool AddiKulEnv::getLegalAppliedAction(const AddiKulAction& action, AddiKulActio
     if (action.getActionID() < 0) { return false; }
 
     Player actor = (action.getPlayer() == Player::kPlayerNone) ? turn_ : action.getPlayer();
-    if (actor != turn_) { return false; }
-
+    //if (actor != turn_) { return false; }
+    if (actor != turn_) {
+        // Some GTP frontends (e.g., gogui-twogtp) echo a generated move back with a
+        // subsequent "play" command even though MiniZero already applied the move
+        // during `genmove`. When that happens the current turn has advanced, so a
+        // strict turn check would reject the echoed move. Treat it as already-acted
+        // if it matches the most recent action.
+        if (!actions_.empty()) {
+            const AddiKulAction& last_action = actions_.back();
+            if (last_action.getActionID() == action.getActionID() && last_action.getPlayer() == actor) {
+                applied_action = last_action;
+                return true; // Accept as a no-op to keep GTP controllers in sync.
+            }
+        }
+        return false;
+    }
     // Primary path: treat the incoming action as already using board coordinates
     // (Player1 orientation). This matches how policy logits are interpreted for
     // other board games in MiniZero.
@@ -296,13 +374,22 @@ bool AddiKulEnv::isTerminal() const
 
 float AddiKulEnv::getEvalScore(bool is_resign /*= false*/) const
 {
-    Player winner = is_resign ? getNextPlayer(turn_, kAddiKulNumPlayer) : eval();
+    (void)is_resign;
+
+    // IMPORTANT:
+    // gogui-twogtp calls `final_score` to decide whether a game is over.
+    // Many environments return NaN for "not terminal yet" so the referee keeps playing.
+    // If we return 0.0 at non-terminal states, gogui-twogtp may stop immediately.
+    if (!isTerminal()) { return std::numeric_limits<float>::quiet_NaN(); }
+
+    const Player winner = eval();
     switch (winner) {
         case Player::kPlayer1: return 1.0f;
         case Player::kPlayer2: return -1.0f;
         default: return 0.0f;
     }
 }
+
 
 std::vector<float> AddiKulEnv::getFeatures(utils::Rotation rotation /*= utils::Rotation::kRotationNone*/) const
 {
@@ -365,8 +452,9 @@ int AddiKulEnv::getRotateAction(int action_id, utils::Rotation rotation) const
 {
     int from = action_id / (getBoardSize() * getBoardSize());
     int dest = action_id % (getBoardSize() * getBoardSize());
-    int rotated_from = getRotatePosition(from, rotation);
-    int rotated_dest = getRotatePosition(dest, rotation);
+    const auto rr = utils::reversed_rotation[static_cast<int>(rotation)];
+    int rotated_from = getRotatePosition(from, rr);
+    int rotated_dest = getRotatePosition(dest, rr);
     return AddiKulAction::encode(rotated_from, rotated_dest, getBoardSize());
 }
 
@@ -416,14 +504,13 @@ std::vector<float> AddiKulEnvLoader::getActionFeatures(const int pos, utils::Rot
     return action_features;
 }
 
-int AddiKulEnvLoader::getRotateAction(int action_id, utils::Rotation rotation) const
-{
+int AddiKulEnvLoader::getRotateAction(int action_id, utils::Rotation rotation) const{
     int board_size = getBoardSize();
     int from = action_id / (board_size * board_size);
     int dest = action_id % (board_size * board_size);
-    int rotated_from = getRotatePosition(from, rotation);
-    int rotated_dest = getRotatePosition(dest, rotation);
+    const auto rr = utils::reversed_rotation[static_cast<int>(rotation)];
+    int rotated_from = getRotatePosition(from, rr);
+    int rotated_dest = getRotatePosition(dest, rr);
     return AddiKulAction::encode(rotated_from, rotated_dest, board_size);
-}
-
+    }
 } // namespace minizero::env::addikul
