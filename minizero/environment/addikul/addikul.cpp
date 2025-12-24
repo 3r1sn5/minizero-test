@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cctype>
 #include <sstream>
-#include <limits>
 #include <utility>
 
 namespace minizero::env::addikul {
@@ -376,12 +375,7 @@ float AddiKulEnv::getEvalScore(bool is_resign /*= false*/) const
 {
     (void)is_resign;
 
-    // IMPORTANT:
-    // gogui-twogtp calls `final_score` to decide whether a game is over.
-    // Many environments return NaN for "not terminal yet" so the referee keeps playing.
-    // If we return 0.0 at non-terminal states, gogui-twogtp may stop immediately.
-    if (!isTerminal()) { return std::numeric_limits<float>::quiet_NaN(); }
-
+    if (!isTerminal()) { return 0.0f; }
     const Player winner = eval();
     switch (winner) {
         case Player::kPlayer1: return 1.0f;
