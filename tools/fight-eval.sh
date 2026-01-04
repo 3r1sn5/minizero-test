@@ -93,8 +93,14 @@ function run_twogtp(){
     WHITE="$sp_executable_file -conf_file $CONF_FILE2 -conf_str \"${conf_str:+$conf_str:}nn_file_name=$FOLDER2/model/$2\""
     EVAL_FOLDER="${FOLDER1}/$NAME/${2:12:-3}"
     SGFFILE="${EVAL_FOLDER}/${2:12:-3}"
-    if [ -f "$SGFFILE.lock" ] || [ -f "${SGFFILE}-$((${GAMENUM}-1)).sgf" ] || [ ! -f "$FOLDER2/model/$2" ] || [ ! -f "$FOLDER1/model/$2" ] ; then
-        return
+     if [[ $GAME_TYPE == addikul ]]; then
+        if [ -f "${SGFFILE}.dat" ] || [ ! -f "$FOLDER2/model/$2" ] || [ ! -f "$FOLDER1/model/$2" ] ; then
+            return
+        fi
+    else
+        if [ -f "$SGFFILE.lock" ] || [ -f "${SGFFILE}-$((${GAMENUM}-1)).sgf" ] || [ ! -f "$FOLDER2/model/$2" ] || [ ! -f "$FOLDER1/model/$2" ] ; then
+            return
+        fi
     fi
     
     if [ ! -d "${EVAL_FOLDER}" ];then
@@ -105,7 +111,11 @@ function run_twogtp(){
         KOMI=7
     fi
     echo "GPUID: $1, Current players: ${2:12:-3}, Game num $GAMENUM"
-    CUDA_VISIBLE_DEVICES=$1 gogui-twogtp -black "$BLACK" -white "$WHITE" -games $GAMENUM -sgffile $SGFFILE -alternate -auto -size $BOARD_SIZE -komi $KOMI -threads $num_threads
+    if [[ $GAME_TYPE == addikul ]]; then
+        CUDA_VISIBLE_DEVICES=$1 python3 tools/addikul_twogtp.py --black "$BLACK" --white "$WHITE" --games $GAMENUM --boardsize $BOARD_SIZE --out "${SGFFILE}.dat" --threads $num_threads
+    else
+        CUDA_VISIBLE_DEVICES=$1 gogui-twogtp -black "$BLACK" -white "$WHITE" -games $GAMENUM -sgffile $SGFFILE -alternate -auto -size $BOARD_SIZE -komi $KOMI -threads $num_threads
+    fi
 }
 function run_gpu(){
     models=($(ls $FOLDER1/model | grep ".pt$" | sort -V))

@@ -27,7 +27,16 @@ def getWinRate(file, game0_white):
         else:
             player1 = getPlayerName(lines, True)
             player2 = getPlayerName(lines, False)
-        lines = lines.split('ERR_MSG\n')[1].split('\n')[:-1]
+        if 'ERR_MSG\n' in lines:
+            lines = lines.split('ERR_MSG\n')[1].split('\n')[:-1]
+        else:
+            raw_lines = lines.split('\n')
+            data_lines = []
+            for line in raw_lines:
+                if not line or line.startswith('#'):
+                    continue
+                data_lines.append(line)
+            lines = data_lines
         total = len(lines)
         p1_black_win = 0
         p1_white_win = 0
