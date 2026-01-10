@@ -100,7 +100,7 @@ function run_twogtp(){
     fi
     echo "GPUID: $1, Current players: ${3:12:-3} vs. ${2:12:-3}, Game num $GAMENUM"
     if [[ $GAME_TYPE == addikul ]]; then
-        CUDA_VISIBLE_DEVICES=$1 python3 tools/addikul_twogtp.py --black "$BLACK" --white "$WHITE" --games $GAMENUM --boardsize $BOARD_SIZE --out "${SGFFILE}.dat" --threads $num_threads
+        CUDA_VISIBLE_DEVICES=$1 python3 tools/addikul_twogtp.py --black "$BLACK" --white "$WHITE" --games $GAMENUM --boardsize $BOARD_SIZE --out "${SGFFILE}.dat"
     else
         CUDA_VISIBLE_DEVICES=$1 gogui-twogtp -black "$BLACK" -white "$WHITE" -games $GAMENUM -sgffile $SGFFILE -alternate -auto -size $BOARD_SIZE -komi $KOMI -threads $num_threads
     fi
