@@ -153,12 +153,14 @@ std::vector<AddiKulAction> AddiKulEnv::getLegalActions() const
 {
     std::vector<AddiKulAction> actions;
     std::vector<std::pair<int, int>> step_dirs;
+    std::vector<std::pair<int, int>> capture_dirs;
     if (turn_ == Player::kPlayer1) {
         step_dirs = {{0, 1}, {-1, 1}, {1, 1}, {-1, 0}, {1, 0}};
+        capture_dirs = {{0, 1}, {-1, 1}, {1, 1}, {-1, 0}, {1, 0}, {0, -1}, {-1, -1}, {1, -1}};
     } else {
         step_dirs = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}};
+        capture_dirs = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}, {0, 1}, {-1, 1}, {1, 1}};
     }
-    std::vector<std::pair<int, int>> capture_dirs = step_dirs;
 
     for (int pos = 0; pos < getBoardSize() * getBoardSize(); ++pos) {
         if (board_[pos] != turn_) { continue; }
@@ -336,18 +338,10 @@ bool AddiKulEnv::isCaptureMove(int from, int dest, Player player, MoveInfo& info
     int dy = dest / getBoardSize();
     int delta_x = dx - fx;
     int delta_y = dy - fy;
-    if (player == Player::kPlayer1) {
-        if (!((delta_x == 0 && delta_y == 2) ||
-              (std::abs(delta_x) == 2 && delta_y == 2) ||
-              (std::abs(delta_x) == 2 && delta_y == 0))) {
-            return false;
-        }
-    } else {
-        if (!((delta_x == 0 && delta_y == -2) ||
-              (std::abs(delta_x) == 2 && delta_y == -2) ||
-              (std::abs(delta_x) == 2 && delta_y == 0))) {
-            return false;
-        }
+    if (!((delta_x == 0 && std::abs(delta_y) == 2) ||
+          (std::abs(delta_x) == 2 && std::abs(delta_y) == 2) ||
+          (std::abs(delta_x) == 2 && delta_y == 0))) {
+        return false;
     }
 
     int mid_x = fx + delta_x / 2;
