@@ -11,6 +11,7 @@ const std::string kAddiKulName = "addikul";
 const int kAddiKulNumPlayer = 2;
 const int kAddiKulBoardSize = 7;
 const int kAddiKulPiecesPerPlayer = 21;
+const int kAddiKulMaxMoves = 300;
 
 class AddiKulAction : public BaseAction {
 public:
@@ -76,16 +77,12 @@ private:
     bool isInBoard(int x, int y) const;
     bool isCaptureMove(int from, int dest, Player player, MoveInfo& info) const;
     bool isSimpleMove(int from, int dest, Player player) const;
-    void updateRepetition(const AddiKulAction& action);
 
     std::string getCoordinateString() const;
 
     std::vector<Player> board_;
     GamePair<int> captured_;
-    GamePair<int> repeat_count_;
-    GamePair<int> last_from_;
-    GamePair<int> last_dest_;
-    bool repetition_triggered_ = false;
+    int move_count = 0;
 };
 
 class AddiKulEnvLoader : public BaseBoardEnvLoader<AddiKulAction, AddiKulEnv> {

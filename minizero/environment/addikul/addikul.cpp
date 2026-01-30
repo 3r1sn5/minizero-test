@@ -79,12 +79,7 @@ void AddiKulEnv::reset()
     observations_.clear();
     board_.assign(getBoardSize() * getBoardSize(), Player::kPlayerNone);
     captured_.reset();
-    repeat_count_.reset();
-    last_from_.set(Player::kPlayer1, -1);
-    last_from_.set(Player::kPlayer2, -1);
-    last_dest_.set(Player::kPlayer1, -1);
-    last_dest_.set(Player::kPlayer2, -1);
-    repetition_triggered_ = false;
+    move_count = 0;
 
     for (int row = 0; row < 3; ++row) {
         for (int col = 0; col < getBoardSize(); ++col) {
@@ -116,7 +111,7 @@ bool AddiKulEnv::act(const AddiKulAction& action)
         captured_.set(action.getPlayer(), captured_.get(action.getPlayer()) + 1);
     }
 
-    updateRepetition(action);
+    ++move_count;
     turn_ = action.nextPlayer();
     return true;
 }
@@ -214,9 +209,9 @@ bool AddiKulEnv::isLegalAction(const AddiKulAction& action) const
 
 bool AddiKulEnv::isTerminal() const
 {
-    if (repetition_triggered_) { return true; }
     if (captured_.get(Player::kPlayer1) >= kAddiKulPiecesPerPlayer) { return true; }
     if (captured_.get(Player::kPlayer2) >= kAddiKulPiecesPerPlayer) { return true; }
+    if (move_count >= kAddiKulMaxMoves) { return true; }
     return getLegalActions().empty();
 }
 
@@ -297,18 +292,9 @@ int AddiKulEnv::getRotateAction(int action_id, utils::Rotation rotation) const
 
 Player AddiKulEnv::evalWinner() const
 {
-    if (repetition_triggered_) {
-        int p1_captured = captured_.get(Player::kPlayer1);
-        int p2_captured = captured_.get(Player::kPlayer2);
-        if (p1_captured > p2_captured) { return Player::kPlayer1; }
-        if (p2_captured > p1_captured) { return Player::kPlayer2; }
-        return Player::kPlayerNone;
-    }
-
     if (captured_.get(Player::kPlayer1) >= kAddiKulPiecesPerPlayer) { return Player::kPlayer1; }
     if (captured_.get(Player::kPlayer2) >= kAddiKulPiecesPerPlayer) { return Player::kPlayer2; }
 
-    if (getLegalActions().empty()) { return getNextPlayer(turn_, kAddiKulNumPlayer); }
     return Player::kPlayerNone;
 }
 
@@ -370,26 +356,6 @@ bool AddiKulEnv::isSimpleMove(int from, int dest, Player player) const
 
     if ((std::abs(delta_x) == 1) && delta_y == 0) { return true; }
     return false;
-}
-
-void AddiKulEnv::updateRepetition(const AddiKulAction& action)
-{
-    Player player = action.getPlayer();
-    int from = action.getFromID(getBoardSize());
-    int dest = action.getDestID(getBoardSize());
-
-    if (last_from_.get(player) != -1 && last_dest_.get(player) != -1) {
-        if (from == last_dest_.get(player) && dest == last_from_.get(player)) {
-            repeat_count_.set(player, repeat_count_.get(player) + 1);
-        } else {
-            repeat_count_.set(player, 0);
-        }
-    }
-
-    last_from_.set(player, from);
-    last_dest_.set(player, dest);
-
-    if (repeat_count_.get(player) >= 3) { repetition_triggered_ = true; }
 }
 
 std::string AddiKulEnv::getCoordinateString() const
