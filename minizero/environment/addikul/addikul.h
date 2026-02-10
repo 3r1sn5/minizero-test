@@ -57,6 +57,7 @@ public:
     inline int getNumActionFeatureChannels() const override { return 2; }
     inline int getPolicySize() const override { return getBoardSize() * getBoardSize() * getBoardSize() * getBoardSize(); }
     std::string toString() const override;
+    std::string getGameResultString() const;
     inline std::string name() const override { return kAddiKulName; }
     inline int getNumPlayer() const override { return kAddiKulNumPlayer; }
     inline int getRotatePosition(int position, utils::Rotation rotation) const override
@@ -87,6 +88,11 @@ private:
 
 class AddiKulEnvLoader : public BaseBoardEnvLoader<AddiKulAction, AddiKulEnv> {
 public:
+    void loadFromEnvironment(const AddiKulEnv& env, const std::vector<std::vector<std::pair<std::string, std::string>>>& action_info_history = {}) override
+    {
+        BaseBoardEnvLoader<AddiKulAction, AddiKulEnv>::loadFromEnvironment(env, action_info_history);
+        addTag("REASON", env.getGameResultString());
+    }
     std::vector<float> getActionFeatures(const int pos, utils::Rotation rotation = utils::Rotation::kRotationNone) const override;
     inline std::vector<float> getValue(const int pos) const { return {getReturn()}; }
     inline std::string name() const override { return kAddiKulName; }

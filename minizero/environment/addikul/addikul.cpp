@@ -294,8 +294,39 @@ Player AddiKulEnv::evalWinner() const
 {
     if (captured_.get(Player::kPlayer1) >= kAddiKulPiecesPerPlayer) { return Player::kPlayer1; }
     if (captured_.get(Player::kPlayer2) >= kAddiKulPiecesPerPlayer) { return Player::kPlayer2; }
+    if (move_count >= kAddiKulMaxMoves) {
+        if (!config::env_addikul_use_capture_tiebreak) { return Player::kPlayerNone; }
+        int player1_captures = captured_.get(Player::kPlayer1);
+        int player2_captures = captured_.get(Player::kPlayer2);
+        if (player1_captures > player2_captures) { return Player::kPlayer1; }
+        if (player2_captures > player1_captures) { return Player::kPlayer2; }
+        return Player::kPlayerNone;
+    }
 
     return Player::kPlayerNone;
+}
+
+std::string AddiKulEnv::getGameResultString() const
+{
+    const int player1_captures = captured_.get(Player::kPlayer1);
+    const int player2_captures = captured_.get(Player::kPlayer2);
+    if (player1_captures >= kAddiKulPiecesPerPlayer) {
+        return "capture_win";
+    }
+    if (player2_captures >= kAddiKulPiecesPerPlayer) {
+        return "capture_win";
+    }
+    if (move_count >= kAddiKulMaxMoves) {
+        if (player1_captures > player2_captures) {
+            return "limit_win";
+        }
+        if (player2_captures > player1_captures) {
+            return "limit_win";
+        }
+        return "limit_draw";
+    }
+    if (getLegalActions().empty()) { return "no_moves_draw"; }
+    return "game_ongoing";
 }
 
 Player AddiKulEnv::getPlayerAtBoardPos(int pos) const
