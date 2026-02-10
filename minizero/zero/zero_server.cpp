@@ -7,12 +7,41 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace minizero::zero {
 
 using namespace minizero;
 using namespace minizero::utils;
+
+namespace {
+
+std::string extractTagValue(const std::string& record, const std::string& tag)
+{
+    const std::string key = tag + "[";
+    size_t pos = record.find(key);
+    if (pos == std::string::npos) { return ""; }
+    pos += key.size();
+    std::string value;
+    bool escape_next = false;
+    for (size_t i = pos; i < record.size(); ++i) {
+        char c = record[i];
+        if (escape_next) {
+            value.push_back(c);
+            escape_next = false;
+        } else if (c == '\\') {
+            escape_next = true;
+        } else if (c == ']') {
+            break;
+        } else {
+            value.push_back(c);
+        }
+    }
+    return value;
+}
+
+} // namespace
 
 void ZeroLogger::createLog()
 {
@@ -195,6 +224,13 @@ void ZeroServer::selfPlay()
 
     std::vector<int> game_lengths;
     std::vector<float> game_returns;
+    std::unordered_map<std::string, int> game_end_reasons;
+    int capture_win_count = 0;
+    int limit_draw_count = 0;
+    int limit_win_count = 0;
+    int win_count = 0;
+    int loss_count = 0;
+    int draw_count = 0;
     int num_collect_game = 0, total_data_length = 0;
     while (num_collect_game < config::zero_num_games_per_iteration) {
         broadcastSelfPlayJob();
@@ -216,6 +252,24 @@ void ZeroServer::selfPlay()
         if (sp_data.is_terminal_) {
             game_lengths.push_back(sp_data.game_length_);
             game_returns.push_back(sp_data.return_);
+            if (sp_data.return_ > 0.0f) {
+                ++win_count;
+            } else if (sp_data.return_ < 0.0f) {
+                ++loss_count;
+            } else {
+                ++draw_count;
+            }
+            std::string reason = extractTagValue(sp_data.game_record_, "REASON");
+            if (!reason.empty()) {
+                ++game_end_reasons[reason];
+                if (reason == "capture_win") {
+                    ++capture_win_count;
+                } else if (reason == "limit_draw") {
+                    ++limit_draw_count;
+                } else if (reason == "limit_win") {
+                    ++limit_win_count;
+                }
+            }
         }
 
         // display progress
@@ -231,6 +285,8 @@ void ZeroServer::selfPlay()
     shared_data_.logger_.addTrainingLog("[SelfPlay] Finished.");
     if (!game_lengths.empty()) {
         shared_data_.logger_.addTrainingLog("[SelfPlay # Finished Games] " + std::to_string(game_lengths.size()));
+        shared_data_.logger_.addTrainingLog("[SelfPlay Results] Win/Loss/Draw = " + std::to_string(win_count) + "/" +
+                                            std::to_string(loss_count) + "/" + std::to_string(draw_count));
         shared_data_.logger_.addTrainingLog("[SelfPlay Min. Game Lengths] " + std::to_string(*std::min_element(game_lengths.begin(), game_lengths.end())));
         shared_data_.logger_.addTrainingLog("[SelfPlay Max. Game Lengths] " + std::to_string(*std::max_element(game_lengths.begin(), game_lengths.end())));
         shared_data_.logger_.addTrainingLog("[SelfPlay Avg. Game Lengths] " + std::to_string(std::accumulate(game_lengths.begin(), game_lengths.end(), 0.0f) / game_lengths.size()));
@@ -239,6 +295,12 @@ void ZeroServer::selfPlay()
         shared_data_.logger_.addTrainingLog("[SelfPlay Max. Game Returns] " + std::to_string(*std::max_element(game_returns.begin(), game_returns.end())));
         shared_data_.logger_.addTrainingLog("[SelfPlay Avg. Game Returns] " + std::to_string(std::accumulate(game_returns.begin(), game_returns.end(), 0.0f) / game_returns.size()));
         shared_data_.logger_.addTrainingLog("[SelfPlay Std. Game Returns] " + std::to_string(utils::stddev(game_returns)));
+        shared_data_.logger_.addTrainingLog("[SelfPlay End Summary] capture win/limit draw/limit win: " +
+                                            std::to_string(capture_win_count) + "/" + std::to_string(limit_draw_count) +
+                                            "/" + std::to_string(limit_win_count));
+        for (const auto& [reason, count] : game_end_reasons) {
+            shared_data_.logger_.addTrainingLog("[SelfPlay End Reason] " + reason + " = " + std::to_string(count));
+        }
     }
     if (static_cast<int>(game_lengths.size()) != num_collect_game) { shared_data_.logger_.addTrainingLog("[SelfPlay Avg. Data Lengths] " + std::to_string(total_data_length * 1.0f / num_collect_game)); }
 }
