@@ -86,6 +86,7 @@ int env_rubiks_scramble_rotate = 5;
 int env_surakarta_no_capture_plies = 50;
 int env_tetris_block_puzzle_num_holding_block = 3;
 int env_tetris_block_puzzle_num_preview_holding_block = 0;
+bool env_addikul_use_capture_tiebreak = false;
 
 void setConfiguration(ConfigureLoader& cl)
 {
@@ -169,6 +170,8 @@ void setConfiguration(ConfigureLoader& cl)
                     "Environment");
 #elif CONHEX
     cl.addParameter("env_conhex_use_swap_rule", env_conhex_use_swap_rule, "the swap rule in ConHex", "Environment");
+#elif ADDIKUL
+    cl.addParameter("env_addikul_use_capture_tiebreak", env_addikul_use_capture_tiebreak, "true to use capture counts to break move-limit ties in AddiKul; false treats move limit as a draw", "Environment");
 #elif GO
     cl.addParameter("env_go_komi", env_go_komi, "the komi in Go", "Environment");
     cl.addParameter("env_go_ko_rule", env_go_ko_rule, "the ko rules in Go: positional (only consider stones), situational (consider stones and the turn)", "Environment");

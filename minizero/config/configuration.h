@@ -90,6 +90,7 @@ extern int env_rubiks_scramble_rotate;
 extern int env_surakarta_no_capture_plies;
 extern int env_tetris_block_puzzle_num_holding_block;
 extern int env_tetris_block_puzzle_num_preview_holding_block;
+extern bool env_addikul_use_capture_tiebreak;
 
 void setConfiguration(ConfigureLoader& cl);
 
