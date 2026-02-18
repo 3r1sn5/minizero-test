@@ -73,8 +73,7 @@ private:
 
     Player evalWinner() const;
     Player getPlayerAtBoardPos(int pos) const;
-    MoveInfo getMoveInfo(int from, int dest, Player player) const;
-    bool isInBoard(int x, int y) const;
+    bool hasAnyLegalAction() const;
     bool isCaptureMove(int from, int dest, Player player, MoveInfo& info) const;
     bool isSimpleMove(int from, int dest, Player player) const;
 

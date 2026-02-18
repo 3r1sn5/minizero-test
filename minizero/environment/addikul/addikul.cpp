@@ -1,12 +1,26 @@
 #include "addikul.h"
 #include "sgf_loader.h"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <cmath>
 #include <sstream>
 
 namespace minizero::env::addikul {
+
+namespace {
+constexpr std::array<std::pair<int, int>, 5> kP1StepDirs = {{{0, 1}, {-1, 1}, {1, 1}, {-1, 0}, {1, 0}}};
+constexpr std::array<std::pair<int, int>, 5> kP2StepDirs = {{{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}}};
+constexpr std::array<std::pair<int, int>, 8> kP1CaptureDirs = {{{0, 1}, {-1, 1}, {1, 1}, {-1, 0}, {1, 0}, {0, -1}, {-1, -1}, {1, -1}}};
+constexpr std::array<std::pair<int, int>, 8> kP2CaptureDirs = {{{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}, {0, 1}, {-1, 1}, {1, 1}}};
+
+inline bool isInBoardFast(int x, int y, int board_size)
+{
+    return (static_cast<unsigned>(x) < static_cast<unsigned>(board_size) &&
+            static_cast<unsigned>(y) < static_cast<unsigned>(board_size));
+}
+} // namespace
 
 AddiKulAction::AddiKulAction(const std::vector<std::string>& action_string_args, int board_size)
 {
@@ -101,7 +115,8 @@ bool AddiKulEnv::act(const AddiKulAction& action)
 
     int from = action.getFromID(getBoardSize());
     int dest = action.getDestID(getBoardSize());
-    MoveInfo info = getMoveInfo(from, dest, action.getPlayer());
+    MoveInfo info;
+    isCaptureMove(from, dest, action.getPlayer(), info);
 
     board_[from] = Player::kPlayerNone;
     board_[dest] = action.getPlayer();
@@ -147,28 +162,26 @@ bool AddiKulEnv::act(const std::vector<std::string>& action_string_args)
 std::vector<AddiKulAction> AddiKulEnv::getLegalActions() const
 {
     std::vector<AddiKulAction> actions;
-    std::vector<std::pair<int, int>> step_dirs;
-    std::vector<std::pair<int, int>> capture_dirs;
-    if (turn_ == Player::kPlayer1) {
-        step_dirs = {{0, 1}, {-1, 1}, {1, 1}, {-1, 0}, {1, 0}};
-        capture_dirs = {{0, 1}, {-1, 1}, {1, 1}, {-1, 0}, {1, 0}, {0, -1}, {-1, -1}, {1, -1}};
-    } else {
-        step_dirs = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}};
-        capture_dirs = {{0, -1}, {-1, -1}, {1, -1}, {-1, 0}, {1, 0}, {0, 1}, {-1, 1}, {1, 1}};
-    }
+    const int board_size = getBoardSize();
+    const int spatial = board_size * board_size;
+    const Player opponent = getNextPlayer(turn_, kAddiKulNumPlayer);
+    actions.reserve(kAddiKulPiecesPerPlayer * 13);
 
-    for (int pos = 0; pos < getBoardSize() * getBoardSize(); ++pos) {
+    const auto& step_dirs = (turn_ == Player::kPlayer1 ? kP1StepDirs : kP2StepDirs);
+    const auto& capture_dirs = (turn_ == Player::kPlayer1 ? kP1CaptureDirs : kP2CaptureDirs);
+
+    for (int pos = 0; pos < spatial; ++pos) {
         if (board_[pos] != turn_) { continue; }
-        int x = pos % getBoardSize();
-        int y = pos / getBoardSize();
+        int x = pos % board_size;
+        int y = pos / board_size;
 
         for (const auto& dir : step_dirs) {
             int nx = x + dir.first;
             int ny = y + dir.second;
-            if (!isInBoard(nx, ny)) { continue; }
-            int dest = ny * getBoardSize() + nx;
+            if (!isInBoardFast(nx, ny, board_size)) { continue; }
+            int dest = ny * board_size + nx;
             if (board_[dest] != Player::kPlayerNone) { continue; }
-            int action_id = pos * getBoardSize() * getBoardSize() + dest;
+            int action_id = pos * spatial + dest;
             actions.emplace_back(action_id, turn_);
         }
 
@@ -177,12 +190,12 @@ std::vector<AddiKulAction> AddiKulEnv::getLegalActions() const
             int ny = y + dir.second;
             int jx = x + dir.first * 2;
             int jy = y + dir.second * 2;
-            if (!isInBoard(nx, ny) || !isInBoard(jx, jy)) { continue; }
-            int between = ny * getBoardSize() + nx;
-            int dest = jy * getBoardSize() + jx;
-            if (board_[between] != getNextPlayer(turn_, kAddiKulNumPlayer)) { continue; }
+            if (!isInBoardFast(nx, ny, board_size) || !isInBoardFast(jx, jy, board_size)) { continue; }
+            int between = ny * board_size + nx;
+            int dest = jy * board_size + jx;
+            if (board_[between] != opponent) { continue; }
             if (board_[dest] != Player::kPlayerNone) { continue; }
-            int action_id = pos * getBoardSize() * getBoardSize() + dest;
+            int action_id = pos * spatial + dest;
             actions.emplace_back(action_id, turn_);
         }
     }
@@ -192,19 +205,22 @@ std::vector<AddiKulAction> AddiKulEnv::getLegalActions() const
 
 bool AddiKulEnv::isLegalAction(const AddiKulAction& action) const
 {
-    int board_size = getBoardSize();
-    Player player = action.getPlayer();
+    const int board_size = getBoardSize();
+    const int spatial = board_size * board_size;
+    const Player player = action.getPlayer();
     if (player != Player::kPlayer1 && player != Player::kPlayer2) { return false; }
     if (player != turn_) { return false; }
-    if (action.getActionID() < 0 || action.getActionID() >= board_size * board_size * board_size * board_size) { return false; }
-    int from = action.getFromID(board_size);
-    int dest = action.getDestID(board_size);
+    if (action.getActionID() < 0 || action.getActionID() >= spatial * spatial) { return false; }
+    const int from = action.getFromID(board_size);
+    const int dest = action.getDestID(board_size);
     if (from == dest) { return false; }
     if (board_[from] != player) { return false; }
     if (board_[dest] != Player::kPlayerNone) { return false; }
 
-    MoveInfo info = getMoveInfo(from, dest, player);
-    return (info.is_capture || isSimpleMove(from, dest, player));
+    MoveInfo info;
+    const bool is_capture = isCaptureMove(from, dest, player, info);
+    if (is_capture) { return true; }
+    return isSimpleMove(from, dest, player);
 }
 
 bool AddiKulEnv::isTerminal() const
@@ -212,7 +228,7 @@ bool AddiKulEnv::isTerminal() const
     if (captured_.get(Player::kPlayer1) >= kAddiKulPiecesPerPlayer) { return true; }
     if (captured_.get(Player::kPlayer2) >= kAddiKulPiecesPerPlayer) { return true; }
     if (move_count >= kAddiKulMaxMoves) { return true; }
-    return getLegalActions().empty();
+    return !hasAnyLegalAction();
 }
 
 float AddiKulEnv::getEvalScore(bool is_resign) const
@@ -227,32 +243,29 @@ float AddiKulEnv::getEvalScore(bool is_resign) const
 
 std::vector<float> AddiKulEnv::getFeatures(utils::Rotation rotation) const
 {
-    std::vector<float> features;
-    int spatial = getBoardSize() * getBoardSize();
-    features.reserve(4 * spatial);
-    for (int channel = 0; channel < 4; ++channel) {
-        for (int pos = 0; pos < spatial; ++pos) {
-            int rotation_pos = getRotatePosition(pos, utils::reversed_rotation[static_cast<int>(rotation)]);
-            if (channel == 0) {
-                features.push_back(board_[rotation_pos] == turn_ ? 1.0f : 0.0f);
-            } else if (channel == 1) {
-                features.push_back(board_[rotation_pos] == getNextPlayer(turn_, kAddiKulNumPlayer) ? 1.0f : 0.0f);
-            } else if (channel == 2) {
-                features.push_back(turn_ == Player::kPlayer1 ? 1.0f : 0.0f);
-            } else {
-                features.push_back(turn_ == Player::kPlayer2 ? 1.0f : 0.0f);
-            }
-        }
+    const int spatial = getBoardSize() * getBoardSize();
+    const Player opponent = getNextPlayer(turn_, kAddiKulNumPlayer);
+    const float is_p1_turn = (turn_ == Player::kPlayer1 ? 1.0f : 0.0f);
+    const float is_p2_turn = (turn_ == Player::kPlayer2 ? 1.0f : 0.0f);
+
+    std::vector<float> features(4 * spatial, 0.0f);
+    for (int pos = 0; pos < spatial; ++pos) {
+        const int rotation_pos = getRotatePosition(pos, utils::reversed_rotation[static_cast<int>(rotation)]);
+        features[pos] = (board_[rotation_pos] == turn_ ? 1.0f : 0.0f);
+        features[spatial + pos] = (board_[rotation_pos] == opponent ? 1.0f : 0.0f);
+        features[2 * spatial + pos] = is_p1_turn;
+        features[3 * spatial + pos] = is_p2_turn;
     }
     return features;
 }
 
 std::vector<float> AddiKulEnv::getActionFeatures(const AddiKulAction& action, utils::Rotation rotation) const
 {
-    int spatial = getBoardSize() * getBoardSize();
+    const int board_size = getBoardSize();
+    const int spatial = board_size * board_size;
     std::vector<float> action_features(2 * spatial, 0.0f);
-    int from = getRotatePosition(action.getFromID(getBoardSize()), rotation);
-    int dest = getRotatePosition(action.getDestID(getBoardSize()), rotation);
+    int from = getRotatePosition(action.getFromID(board_size), rotation);
+    int dest = getRotatePosition(action.getDestID(board_size), rotation);
     action_features[from] = 1.0f;
     action_features[spatial + dest] = 1.0f;
     return action_features;
@@ -312,35 +325,60 @@ Player AddiKulEnv::getPlayerAtBoardPos(int pos) const
     return board_[pos];
 }
 
-AddiKulEnv::MoveInfo AddiKulEnv::getMoveInfo(int from, int dest, Player player) const
+bool AddiKulEnv::hasAnyLegalAction() const
 {
-    MoveInfo info;
-    if (isCaptureMove(from, dest, player, info)) { return info; }
-    return info;
-}
+    const int board_size = getBoardSize();
+    const int spatial = board_size * board_size;
+    const Player opponent = getNextPlayer(turn_, kAddiKulNumPlayer);
 
-bool AddiKulEnv::isInBoard(int x, int y) const
-{
-    return x >= 0 && x < getBoardSize() && y >= 0 && y < getBoardSize();
+    const auto& step_dirs = (turn_ == Player::kPlayer1 ? kP1StepDirs : kP2StepDirs);
+    const auto& capture_dirs = (turn_ == Player::kPlayer1 ? kP1CaptureDirs : kP2CaptureDirs);
+
+    for (int pos = 0; pos < spatial; ++pos) {
+        if (board_[pos] != turn_) { continue; }
+        const int x = pos % board_size;
+        const int y = pos / board_size;
+
+        for (const auto& dir : step_dirs) {
+            const int nx = x + dir.first;
+            const int ny = y + dir.second;
+            if (!isInBoardFast(nx, ny, board_size)) { continue; }
+            if (board_[ny * board_size + nx] == Player::kPlayerNone) { return true; }
+        }
+
+        for (const auto& dir : capture_dirs) {
+            const int nx = x + dir.first;
+            const int ny = y + dir.second;
+            const int jx = x + dir.first * 2;
+            const int jy = y + dir.second * 2;
+            if (!isInBoardFast(nx, ny, board_size) || !isInBoardFast(jx, jy, board_size)) { continue; }
+            const int between = ny * board_size + nx;
+            const int dest = jy * board_size + jx;
+            if (board_[between] == opponent && board_[dest] == Player::kPlayerNone) { return true; }
+        }
+    }
+
+    return false;
 }
 
 bool AddiKulEnv::isCaptureMove(int from, int dest, Player player, MoveInfo& info) const
 {
-    int fx = from % getBoardSize();
-    int fy = from / getBoardSize();
-    int dx = dest % getBoardSize();
-    int dy = dest / getBoardSize();
-    int delta_x = dx - fx;
-    int delta_y = dy - fy;
+    const int board_size = getBoardSize();
+    const int fx = from % board_size;
+    const int fy = from / board_size;
+    const int dx = dest % board_size;
+    const int dy = dest / board_size;
+    const int delta_x = dx - fx;
+    const int delta_y = dy - fy;
     if (!((delta_x == 0 && std::abs(delta_y) == 2) ||
           (std::abs(delta_x) == 2 && std::abs(delta_y) == 2) ||
           (std::abs(delta_x) == 2 && delta_y == 0))) {
         return false;
     }
 
-    int mid_x = fx + delta_x / 2;
-    int mid_y = fy + delta_y / 2;
-    int mid = mid_y * getBoardSize() + mid_x;
+    const int mid_x = fx + delta_x / 2;
+    const int mid_y = fy + delta_y / 2;
+    const int mid = mid_y * board_size + mid_x;
     if (board_[mid] != getNextPlayer(player, kAddiKulNumPlayer)) { return false; }
     info.is_capture = true;
     info.jumped_pos = mid;
@@ -349,12 +387,13 @@ bool AddiKulEnv::isCaptureMove(int from, int dest, Player player, MoveInfo& info
 
 bool AddiKulEnv::isSimpleMove(int from, int dest, Player player) const
 {
-    int fx = from % getBoardSize();
-    int fy = from / getBoardSize();
-    int dx = dest % getBoardSize();
-    int dy = dest / getBoardSize();
-    int delta_x = dx - fx;
-    int delta_y = dy - fy;
+    const int board_size = getBoardSize();
+    const int fx = from % board_size;
+    const int fy = from / board_size;
+    const int dx = dest % board_size;
+    const int dy = dest / board_size;
+    const int delta_x = dx - fx;
+    const int delta_y = dy - fy;
 
     if (player == Player::kPlayer1) {
         if ((delta_x == 0 && delta_y == 1) || (std::abs(delta_x) == 1 && delta_y == 1)) { return true; }
